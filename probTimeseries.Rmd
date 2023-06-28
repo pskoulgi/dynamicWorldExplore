@@ -1,0 +1,158 @@
+---
+title: "Timeseries modeling of Dynamic World probabilities"
+output: 
+  html_document:
+    toc: yes
+    toc_float: true
+    number_sections: true
+date: "`r Sys.Date()`"
+---
+
+# References
+
+Built on the [`{compositions}`](http://www.stat.boogaart.de/compositions/) package which is described by the authors in this [paper](https://sci-hub.se/10.1016/j.cageo.2006.11.017).
+
+A handy primer on how to use this for linear modeling is [UsingCompositions.pdf](http://www.stat.boogaart.de/compositions/UsingCompositions.pdf). See, specifically, pg. 13 which demonstrates how to build a model where the response variable is compositional data, and predictor variable/s is/are real data (which is the case for us).
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(geojsonsf)
+library(sf)
+library(compositions)
+# library(robCompositions)
+```
+
+# Load & prepare DW data
+```{r}
+ptsWithProbs <- geojson_sf("data/labPtsWithDW.geojson")
+```
+
+## Go from 9 to 3 probabilities
+Also, create convert time stamp to date.
+```{r}
+ptsWithProbsCollapsed <- ptsWithProbs %>% 
+  mutate(nat = trees + snow_and_ice + crops +
+           grass + shrub_and_scrub + bare,
+         nonnat = built,
+         wet = flooded_vegetation + water,
+         date = as.Date(`system:time_start`/(1e3*60*60*24)), # day
+         timeMillis = `system:time_start`,
+         .keep = "unused")
+```
+
+# For a single point
+
+```{r}
+point <- ptsWithProbsCollapsed %>% filter(ptId == "77.4940_12.9205")
+```
+
+## Linear fit 
+
+### Year 2020
+
+Probabilities point cloud
+
+```{r}
+year = '2020'
+point20 <- point %>% 
+  filter(between(
+    date, 
+    as.Date(paste0(year, '-01-01')), 
+    as.Date(paste0(year, '-12-31')))) %>% 
+  drop_na(any_of(c("wet", "nat", "nonnat")))
+
+pointX20 <- point20 %>% select(date) %>% 
+  st_drop_geometry()
+pointY20 <- point20 %>% select(nat, nonnat, wet) %>% 
+  st_drop_geometry() %>% 
+  acomp()
+plot(pointY20)
+```
+
+Linear fit Y ~ X
+```{r}
+mylm20 <- lm(ilr(pointY20) ~ X, data = data.frame(X = pointX20$date))
+summary(mylm20)
+```
+
+Model predictions, in composition space
+```{r}
+plot(ilrInv(predict(mylm20)), pch=20)
+```
+
+Prediction residuals, in composition space
+```{r}
+plot(ilrInv(resid(mylm20)))
+
+# ellipses(mean(pointY), var(pointY))
+# yPred <- ilrInv(predict(mylm, newdata=data.frame(X=pointX$date)))
+# plot(yPred)
+
+```
+
+### Year 2022
+
+Probabilities point cloud
+
+```{r}
+year = '2022'
+point22 <- point %>% 
+  filter(between(
+    date, 
+    as.Date(paste0(year, '-01-01')), 
+    as.Date(paste0(year, '-12-31')))) %>% 
+  drop_na(any_of(c("wet", "nat", "nonnat")))
+
+pointX22 <- point22 %>% select(date) %>% 
+  st_drop_geometry()
+pointY22 <- point22 %>% select(nat, nonnat, wet) %>% 
+  st_drop_geometry() %>% 
+  acomp()
+plot(pointY22)
+```
+
+Linear fit Y ~ X
+
+```{r}
+mylm22 <- lm(ilr(pointY22) ~ X, data = data.frame(X = pointX22$date))
+summary(mylm22)
+```
+
+Model predictions
+```{r}
+plot(ilrInv(predict(mylm22)), pch=20)
+```
+
+Prediction residuals
+```{r}
+plot(ilrInv(resid(mylm22)))
+
+# ellipses(mean(pointY), var(pointY))
+# yPred <- ilrInv(predict(mylm, newdata=data.frame(X=pointX$date)))
+# plot(yPred)
+```
+
+## Harmonic fit
+
+### Year 2022
+Harmonic fit Y ~ X + cos(2piX) + sin(2piX)
+```{r}
+xc <- cos(2*pi*point22$timeMillis)
+xs <- sin(2*pi*point22$timeMillis)
+mylmHarm22 <- lm(
+  ilr(pointY22) ~ X + XC + XS, 
+  data = data.frame(X = pointX22$date, XC = xc, XS = xs))
+summary(mylmHarm22)
+```
+
+Model predictions
+```{r}
+plot(ilrInv(predict(mylmHarm22)), pch=20)
+```
+
+Prediction residuals
+```{r}
+plot(ilrInv(resid(mylmHarm22)))
+```
