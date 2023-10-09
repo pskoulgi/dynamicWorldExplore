@@ -27,6 +27,7 @@ library(compositions)
 # Load & prepare DW data
 ```{r}
 ptsWithProbs <- geojson_sf("data/labPtsWithDW.geojson")
+head(ptsWithProbs)
 ```
 
 ## Go from 9 to 3 probabilities
@@ -43,91 +44,96 @@ ptsWithProbsCollapsed <- ptsWithProbs %>%
 ```
 
 # For a single point
-
+Choose a single point to run a compositional linear model over. At-scale, this will have to happen for all points in the table (for land cover classifier training) and for every pixel in the image stack (for classifier prediction).
 ```{r}
-point <- ptsWithProbsCollapsed %>% filter(ptId == "77.4940_12.9205")
+chosenPoint <- ptsWithProbsCollapsed %>% filter(ptId == "76.3114_14.7652")
+# 77.4940_12.9205: built
+# 76.3114_14.7652: savanna_open
+# 75.5558_12.2999: agri_hiBiomass
+# 76.3071_14.7580: savanna_shrub
+# 75.5625_12.2379: forest
+chosenPoint
 ```
 
 ## Linear fit 
+Since most (natural) land covers have a cycle of seasons every year, the phenology traced by the probability vector is assumed to have a period of 1 year.
 
-### Year 2020
-
-Probabilities point cloud
+### Year: 2020
+Choose a single year. Plot the probabilities point cloud in ternary space.
 
 ```{r}
 year = '2020'
-point20 <- point %>% 
+point20 <- chosenPoint %>% 
   filter(between(
     date, 
     as.Date(paste0(year, '-01-01')), 
     as.Date(paste0(year, '-12-31')))) %>% 
   drop_na(any_of(c("wet", "nat", "nonnat")))
 
-pointX20 <- point20 %>% select(date) %>% 
-  st_drop_geometry()
-pointY20 <- point20 %>% select(nat, nonnat, wet) %>% 
+point20X <- point20 %>% select(date) %>% 
+  st_drop_geometry() # to save memory
+point20Y <- point20 %>% select(nat, nonnat, wet) %>% 
   st_drop_geometry() %>% 
-  acomp()
-plot(pointY20)
+  acomp() # force the probability triplet to sum to 1 making it compositional data
+plot(point20Y)
 ```
 
-Linear fit Y ~ X
+Simple linear fit Y ~ X
 ```{r}
-mylm20 <- lm(ilr(pointY20) ~ X, data = data.frame(X = pointX20$date))
-summary(mylm20)
+simpleLm20 <- lm(ilr(point20Y) ~ X, data = data.frame(X = point20X$date))
+summary(simpleLm20)
 ```
 
 Model predictions, in composition space
 ```{r}
-plot(ilrInv(predict(mylm20)), pch=20)
+plot(ilrInv(predict(simpleLm20)), pch=20)
 ```
 
 Prediction residuals, in composition space
 ```{r}
-plot(ilrInv(resid(mylm20)))
+plot(ilrInv(resid(simpleLm20)))
 
 # ellipses(mean(pointY), var(pointY))
 # yPred <- ilrInv(predict(mylm, newdata=data.frame(X=pointX$date)))
 # plot(yPred)
-
 ```
 
-### Year 2022
+### Another year: 2022
 
 Probabilities point cloud
 
 ```{r}
 year = '2022'
-point22 <- point %>% 
+point22 <- chosenPoint %>% 
   filter(between(
     date, 
     as.Date(paste0(year, '-01-01')), 
     as.Date(paste0(year, '-12-31')))) %>% 
   drop_na(any_of(c("wet", "nat", "nonnat")))
 
-pointX22 <- point22 %>% select(date) %>% 
+point22X <- point22 %>% select(date) %>% 
   st_drop_geometry()
-pointY22 <- point22 %>% select(nat, nonnat, wet) %>% 
+point22Y <- point22 %>% select(nat, nonnat, wet) %>% 
   st_drop_geometry() %>% 
   acomp()
-plot(pointY22)
+plot(point22Y)
 ```
 
-Linear fit Y ~ X
+Simple linear fit Y ~ X
 
 ```{r}
-mylm22 <- lm(ilr(pointY22) ~ X, data = data.frame(X = pointX22$date))
-summary(mylm22)
+simpleLm22 <- lm(ilr(point22Y) ~ X, data = data.frame(X = point22X$date))
+summary(simpleLm22)
 ```
 
 Model predictions
 ```{r}
-plot(ilrInv(predict(mylm22)), pch=20)
+plot(ilrInv(predict(simpleLm22)), pch=20)
 ```
 
 Prediction residuals
 ```{r}
-plot(ilrInv(resid(mylm22)))
+plot(ilrInv(resid(simpleLm22)))
 
 # ellipses(mean(pointY), var(pointY))
 # yPred <- ilrInv(predict(mylm, newdata=data.frame(X=pointX$date)))
@@ -135,24 +141,28 @@ plot(ilrInv(resid(mylm22)))
 ```
 
 ## Harmonic fit
+Borrowing from Nick Clinton's YT tutorial on [Time Series Analysis in Earth Engine](https://www.youtube.com/watch?v=xQGNAYL7z80), construct a harmonic model.
 
 ### Year 2022
 Harmonic fit Y ~ X + cos(2piX) + sin(2piX)
+
+See pg. 13 of [UsingCompositions.pdf](http://www.stat.boogaart.de/compositions/UsingCompositions.pdf) for a demonstration on how to build a linear model where the response variable is compositional data, and predictor variable/s is/are real data (which is the case here).
+
 ```{r}
-xc <- cos(2*pi*point22$timeMillis)
-xs <- sin(2*pi*point22$timeMillis)
-mylmHarm22 <- lm(
-  ilr(pointY22) ~ X + XC + XS, 
-  data = data.frame(X = pointX22$date, XC = xc, XS = xs))
-summary(mylmHarm22)
+xc <- cos(2*pi*point22$timeMillis) # cosine
+xs <- sin(2*pi*point22$timeMillis) # sine
+harmLm22 <- lm(
+  ilr(point22Y) ~ X + XC + XS, 
+  data = data.frame(X = point22X$date, XC = xc, XS = xs))
+summary(harmLm22)
 ```
 
 Model predictions
 ```{r}
-plot(ilrInv(predict(mylmHarm22)), pch=20)
+plot(ilrInv(predict(harmLm22)), pch=20)
 ```
 
 Prediction residuals
 ```{r}
-plot(ilrInv(resid(mylmHarm22)))
+plot(ilrInv(resid(harmLm22)))
 ```
