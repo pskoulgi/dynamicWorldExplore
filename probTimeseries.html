@@ -10,9 +10,9 @@
 
 
 
-<meta name="date" content="2023-10-09" />
+<meta name="date" content="2023-10-11" />
 
-<title>Timeseries modeling of Dynamic World probabilities</title>
+<title>Modeling Dynamic World probabilities as timeseries of compositional data vectors</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1484,33 +1484,98 @@ border-radius: 0px;
 
 
 
-<h1 class="title toc-ignore">Timeseries modeling of Dynamic World
-probabilities</h1>
-<h4 class="date">2023-10-09</h4>
+<h1 class="title toc-ignore">Modeling Dynamic World probabilities as
+timeseries of compositional data vectors</h1>
+<h4 class="date">2023-10-11</h4>
 
 </div>
 
 
-<div id="references" class="section level1" number="1">
-<h1><span class="header-section-number">1</span> References</h1>
-<p>Built on the <a href="http://www.stat.boogaart.de/compositions/"><code>{compositions}</code></a>
-package which is described by the authors in this <a href="https://sci-hub.se/10.1016/j.cageo.2006.11.017">paper</a>.</p>
-<p>A handy primer on how to use this for linear modeling is <a href="http://www.stat.boogaart.de/compositions/UsingCompositions.pdf">UsingCompositions.pdf</a>.
+<div id="overview" class="section level1" number="1">
+<h1><span class="header-section-number">1</span> Overview</h1>
+<div id="context" class="section level2" number="1.1">
+<h2><span class="header-section-number">1.1</span> Context</h2>
+<p>A pixel in a Dynamic World (DW) image captures probabilities 9 land
+cover categories. These probabilities at every pixel change as its land
+cover cycles through seasons each year. Modeling patterns in a
+timeseries of these probabilities can prove powerful in inferring more
+complex land cover types than are available in DW.</p>
+<p>Using probability values of a single cover type (say,
+<code>grass</code>) for such timeseries modeling (to infer, say,
+different types of grasslands) is one way to approach this. But doing so
+ignores the neat mathematical structure offered by the fact that it is
+one component of a vector of probabilities, which change together while
+also summing to 1 at every time point, i.e., the probability vectors
+have the structure of compositional data vectors, and DW offers a
+timeseries of those at each pixel.</p>
+<p>In our land cover mapping exercise identifying different types of
+open-canopy natural ecosystems in semi-arid India (roughly 2.5M sq.
+km.), <strong>we wish to explore the compositional approach to modeling
+vegetation phenology using multiple linear regression on the DW
+timeseries</strong> (along the lines of Nick Clinton’s tutorial on
+harmonic modeling in the <a href="https://www.youtube.com/watch?v=xQGNAYL7z80">Time Series Analysis
+in Earth Engine</a> tutorial). This would involve the following steps,
+which is achievable using the <a href="http://www.stat.boogaart.de/compositions/"><code>{compositions}</code></a>
+package in R:</p>
+<ul>
+<li>apply isometric logratio (ilr) transformation to each probability
+vector in a timeseries</li>
+<li>model landcover phenology by performing harmonic analysis, using
+multiple linear regression, on the ilr-transformed vectors.</li>
+</ul>
+<p>We have attempted this below for one pixel at a time. To be able to
+visualize results and build our understanding, we have reduced the
+numerical complexity down to a 3 probabilities case, from the 9
+probabilities offered by DW.</p>
+</div>
+<div id="how-earth-engine-could-help" class="section level2" number="1.2">
+<h2><span class="header-section-number">1.2</span> How Earth Engine
+could help</h2>
+<p>We would like to perform this harmonic modeling on the DW dataset
+treated as a timeseries of compositional vector data of 9-long
+probability vectors. Using the results of this harmonic modeling (the
+coefficients, goodness of fit), we would like to build a classifier
+using one of the classifiers already available on Earth Engine to
+produce a map.</p>
+<p>Specifically, <strong>can there be a reducer which can perform
+multiple linear regression on the (ilr-transformed) compositional
+vectors as response variables</strong>, returning model coefficients and
+goodness of fit measures?</p>
+</div>
+</div>
+<div id="additional-resources" class="section level1" number="2">
+<h1><span class="header-section-number">2</span> Additional
+resources</h1>
+<ul>
+<li>An overview of the math behind linear regression of compositional
+data, isometric logratio: Wang et al. (2013), “Multiple linear
+regression modeling for compositional data”, Neurocomputing, Volume 122,
+25 December 2013, Pages 490-500. <a href="https://sci-hub.se/10.1016/j.neucom.2013.05.025">(SciHub
+link)</a>.</li>
+<li>Built on the <a href="http://www.stat.boogaart.de/compositions/"><code>{compositions}</code></a>
+package which is described by the authors in this <a href="https://sci-hub.se/10.1016/j.cageo.2006.11.017">paper</a>.
+<ul>
+<li>A handy primer on how to use this for linear modeling is <a href="http://www.stat.boogaart.de/compositions/UsingCompositions.pdf">UsingCompositions.pdf</a>.
 See, specifically, pg. 13 which demonstrates how to build a model where
 the response variable is compositional data, and predictor variable/s
-is/are real data (which is the case for us).</p>
+is/are real data (which is the case for us).</li>
+</ul></li>
+</ul>
 </div>
-<div id="load-libraries" class="section level1" number="2">
-<h1><span class="header-section-number">2</span> Load libraries</h1>
+<div id="code-to-explore-dw-harmonic-mideling-for-a-single-point" class="section level1" number="3">
+<h1><span class="header-section-number">3</span> Code to explore DW
+harmonic mideling for a single point</h1>
+<div id="load-libraries" class="section level2" number="3.1">
+<h2><span class="header-section-number">3.1</span> Load libraries</h2>
 <pre class="r"><code>library(tidyverse)
 library(geojsonsf)
 library(sf)
 library(compositions)
 # library(robCompositions)</code></pre>
 </div>
-<div id="load-prepare-dw-data" class="section level1" number="3">
-<h1><span class="header-section-number">3</span> Load &amp; prepare DW
-data</h1>
+<div id="load-prepare-dw-data" class="section level2" number="3.2">
+<h2><span class="header-section-number">3.2</span> Load &amp; prepare DW
+data</h2>
 <pre class="r"><code>ptsWithProbs &lt;- geojson_sf(&quot;data/labPtsWithDW.geojson&quot;)
 head(ptsWithProbs)</code></pre>
 <pre><code>## Simple feature collection with 6 features and 14 fields
@@ -1546,9 +1611,9 @@ head(ptsWithProbs)</code></pre>
 ## 4 POINT (77.49821 12.96666)
 ## 5  POINT (77.51673 12.9407)
 ## 6 POINT (77.59318 12.87231)</code></pre>
-<div id="go-from-9-to-3-probabilities" class="section level2" number="3.1">
-<h2><span class="header-section-number">3.1</span> Go from 9 to 3
-probabilities</h2>
+<div id="go-from-9-to-3-probabilities" class="section level3" number="3.2.1">
+<h3><span class="header-section-number">3.2.1</span> Go from 9 to 3
+probabilities</h3>
 <p>Also, create convert time stamp to date.</p>
 <pre class="r"><code>ptsWithProbsCollapsed &lt;- ptsWithProbs %&gt;% 
   mutate(nat = trees + snow_and_ice + crops +
@@ -1560,8 +1625,9 @@ probabilities</h2>
          .keep = &quot;unused&quot;)</code></pre>
 </div>
 </div>
-<div id="for-a-single-point" class="section level1" number="4">
-<h1><span class="header-section-number">4</span> For a single point</h1>
+<div id="for-a-single-point" class="section level2" number="3.3">
+<h2><span class="header-section-number">3.3</span> For a single
+point</h2>
 <p>Choose a single point to run a compositional linear model over.
 At-scale, this will have to happen for all points in the table (for land
 cover classifier training) and for every pixel in the image stack (for
@@ -1572,7 +1638,6 @@ classifier prediction).</p>
 # 75.5558_12.2999: agri_hiBiomass
 # 76.3071_14.7580: savanna_shrub
 # 75.5625_12.2379: forest
-
 chosenPoint</code></pre>
 <pre><code>## Simple feature collection with 750 features and 9 fields
 ## Geometry type: POINT
@@ -1613,13 +1678,13 @@ chosenPoint</code></pre>
 ## 8  1.449207e+12
 ## 9  1.450676e+12
 ## 10 1.450676e+12</code></pre>
-<div id="linear-fit" class="section level2" number="4.1">
-<h2><span class="header-section-number">4.1</span> Linear fit</h2>
+<div id="linear-fit" class="section level3" number="3.3.1">
+<h3><span class="header-section-number">3.3.1</span> Linear fit</h3>
 <p>Since most (natural) land covers have a cycle of seasons every year,
 the phenology traced by the probability vector is assumed to have a
 period of 1 year.</p>
-<div id="year-2020" class="section level3" number="4.1.1">
-<h3><span class="header-section-number">4.1.1</span> Year: 2020</h3>
+<div id="year-2020" class="section level4" number="3.3.1.1">
+<h4><span class="header-section-number">3.3.1.1</span> Year: 2020</h4>
 <p>Choose a single year. Plot the probabilities point cloud in ternary
 space.</p>
 <pre class="r"><code>year = &#39;2020&#39;
@@ -1686,9 +1751,9 @@ summary(simpleLm20)</code></pre>
 # yPred &lt;- ilrInv(predict(mylm, newdata=data.frame(X=pointX$date)))
 # plot(yPred)</code></pre>
 </div>
-<div id="another-year-2022" class="section level3" number="4.1.2">
-<h3><span class="header-section-number">4.1.2</span> Another year:
-2022</h3>
+<div id="another-year-2022" class="section level4" number="3.3.1.2">
+<h4><span class="header-section-number">3.3.1.2</span> Another year:
+2022</h4>
 <p>Probabilities point cloud</p>
 <pre class="r"><code>year = &#39;2022&#39;
 point22 &lt;- chosenPoint %&gt;% 
@@ -1759,12 +1824,12 @@ summary(simpleLm22)</code></pre>
 # plot(yPred)</code></pre>
 </div>
 </div>
-<div id="harmonic-fit" class="section level2" number="4.2">
-<h2><span class="header-section-number">4.2</span> Harmonic fit</h2>
+<div id="harmonic-fit" class="section level3" number="3.3.2">
+<h3><span class="header-section-number">3.3.2</span> Harmonic fit</h3>
 <p>Borrowing from Nick Clinton’s YT tutorial on <a href="https://www.youtube.com/watch?v=xQGNAYL7z80">Time Series Analysis
 in Earth Engine</a>, construct a harmonic model.</p>
-<div id="year-2022" class="section level3" number="4.2.1">
-<h3><span class="header-section-number">4.2.1</span> Year 2022</h3>
+<div id="year-2022" class="section level4" number="3.3.2.1">
+<h4><span class="header-section-number">3.3.2.1</span> Year 2022</h4>
 <p>Harmonic fit Y ~ X + cos(2piX) + sin(2piX)</p>
 <p>See pg. 13 of <a href="http://www.stat.boogaart.de/compositions/UsingCompositions.pdf">UsingCompositions.pdf</a>
 for a demonstration on how to build a linear model where the response
@@ -1828,6 +1893,7 @@ summary(harmLm22)</code></pre>
 <p>Prediction residuals</p>
 <pre class="r"><code>plot(ilrInv(resid(harmLm22)))</code></pre>
 <p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABUAAAAPACAMAAADDuCPrAAADAFBMVEUAAAABAQECAgIDAwMEBAQFBQUGBgYHBwcICAgJCQkKCgoLCwsMDAwNDQ0ODg4PDw8QEBARERESEhITExMUFBQVFRUWFhYXFxcYGBgZGRkaGhobGxscHBwdHR0eHh4fHx8gICAhISEiIiIjIyMkJCQlJSUmJiYnJycoKCgpKSkqKiorKyssLCwtLS0uLi4vLy8wMDAxMTEyMjIzMzM0NDQ1NTU2NjY3Nzc4ODg5OTk6Ojo7Ozs8PDw9PT0+Pj4/Pz9AQEBBQUFCQkJDQ0NERERFRUVGRkZHR0dISEhJSUlKSkpLS0tMTExNTU1OTk5PT09QUFBRUVFSUlJTU1NUVFRVVVVWVlZXV1dYWFhZWVlaWlpbW1tcXFxdXV1eXl5fX19gYGBhYWFiYmJjY2NkZGRlZWVmZmZnZ2doaGhpaWlqampra2tsbGxtbW1ubm5vb29wcHBxcXFycnJzc3N0dHR1dXV2dnZ3d3d4eHh5eXl6enp7e3t8fHx9fX1+fn5/f3+AgICBgYGCgoKDg4OEhISFhYWGhoaHh4eIiIiJiYmKioqLi4uMjIyNjY2Ojo6Pj4+QkJCRkZGSkpKTk5OUlJSVlZWWlpaXl5eYmJiZmZmampqbm5ucnJydnZ2enp6fn5+goKChoaGioqKjo6OkpKSlpaWmpqanp6eoqKipqamqqqqrq6usrKytra2urq6vr6+wsLCxsbGysrKzs7O0tLS1tbW2tra3t7e4uLi5ubm6urq7u7u8vLy9vb2+vr6/v7/AwMDBwcHCwsLDw8PExMTFxcXGxsbHx8fIyMjJycnKysrLy8vMzMzNzc3Ozs7Pz8/Q0NDR0dHS0tLT09PU1NTV1dXW1tbX19fY2NjZ2dna2trb29vc3Nzd3d3e3t7f39/g4ODh4eHi4uLj4+Pk5OTl5eXm5ubn5+fo6Ojp6enq6urr6+vs7Ozt7e3u7u7v7+/w8PDx8fHy8vLz8/P09PT19fX29vb39/f4+Pj5+fn6+vr7+/v8/Pz9/f3+/v7////isF19AAAACXBIWXMAAB2HAAAdhwGP5fFlAAAgAElEQVR4nO3dd5xU9b3G8We2L21poYuKgIoiAopBiAUl6rUb1NiwK7YosWIl9t4L9t6jwV4xKnbRoKKJIiCiAiJIh2XL3JktCG7/zcz5nvJ5/+EOs8PMc1/38MmWmTOKAwCcyHoAAAQVAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAcEVAAcERAAcARAQUARwQUABwRUABwREABwBEBBQBHBBQAHBFQAHBEQAHAEQEFAEcEFAAc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" width="672" /></p>
+</div>
 </div>
 </div>
 </div>
